@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>小车控制界面</title>
+    <style>
+        html, body {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 0;
+            margin: 0;
+        }
+        #top {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 50%;
+            width: 100%;
+            background: rgba(222, 255, 159, 0.11);
+        }
+        #left {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            height: 50%;
+            width: 45%;
+            background: rgba(0, 255, 0, 0.1);
+        }
+        #middle {
+            position: absolute;
+            left: 45%;
+            top: 50%;
+            height: 50%;
+            width: 10%;
+            background: rgba(255, 58, 109, 0.1);
+        }
+        #right {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            height: 50%;
+            width: 45%;
+            background: rgba(0, 255, 0, 0.1);
+
+        }
+    </style>
+</head>
+<body>
+<textarea id="top" title="控制台调试"></textarea>
+<div id="left"></div>
+<button id="middle">自动驾驶</button>
+<div id="right"></div>
+<script src="js/nipplejs.js"></script>
+<script src="js/jquery.min.js"></script>
+<script>
+
+    var ws = new WebSocket("ws://192.168.1.1:3690");
+    var shower = $('#top');
+    var appendLine = function (line) {
+        shower.val(shower.val() + line + "\r\n");
+    };
+    var button=document.getElementById('middle');
+    var auto = false;
+    button.onclick = function (ev){
+        if (button.innerText === '自动驾驶') {
+            send(7, 25);
+            button.innerText = '关闭自动';
+            auto = true;
+        }
+        else {
+            send(5,0);
+            button.innerText = '自动驾驶';
+            auto = false;
+        }
+    };
+    //取元素的百分百大小,返回px
+    function getSize(elem, percent) {
+        var tem = (elem.clientWidth > elem.clientHeight ? elem.clientHeight : elem.clientWidth);
+        return parseInt(tem * percent);
+    }
+    function send(method, parm) {
+        ws.send("@"+method+","+parm+"!");
+    }
+    ws.onopen = function(evt) {
+        shower.val("成功连接服务器...\r\n"); //拼接新值
+    };
+    ws.onmessage = function(evt) {
+        var str = evt.data;
+        //如果是自动驾驶的汇报信息
+        if (str === "!") {
+            if (auto) {
+                send(7,25);
+                return;
+            }
+        }
+        //自动驾驶遇到障碍物
+        else if (str.charAt(str.length-1) === "!" && auto){
+            send(7, 25);
+        }
+        appendLine(str.replace());
+    };
+    ws.onclose = function(evt) {
+        appendLine("连接关闭...");
+    };
+    ws.onerror = function(evt) {
+        ws.close();
+    };
+    var joystickL = nipplejs.create({
+        zone: document.getElementById('left'),
+        mode: 'static',
+        position: { left: '45%', top: '50%' },
+        color: 'green',
+        size: getSize(document.body, 0.25)
+    });
+
+    var joystickR = nipplejs.create({
+        zone: document.getElementById('right'),
+        mode: 'static',
+        position: { right: '45%', top: '50%' },
+        color: 'green',
+        size: getSize(document.body, 0.25)
+    });
+
+    joystickL.on('move', function (evt, data) {
+        if (auto) return;
+        var angle = data.direction.angle;    //up,down,left,right
+        var speed = data.distance/100*35;
+        var method;
+        if (angle === "up"){
+            method = 1;
+        }
+        else if (angle === "down"){
+            method = 2;
+        }
+        else if (angle === "left"){
+            method = 3;
+        }else if (angle === "right"){
+            method = 4;
+        }
+        send(method,speed);
+
+    }).on('end', function (evt, data) {
+        send(5,0);
+    });
+
+    joystickR.on('move', function (evt, data) {
+        if (auto) return;
+        var degree = data.angle.degree;
+        if (degree <= 180) {
+            send(6,degree);
+        }
+        else {
+            appendLine("警告:探测角度应该在0到180度之间!");
+        }
+    });
+
+</script>
+</body>
+</html>
